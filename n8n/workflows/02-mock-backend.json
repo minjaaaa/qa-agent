@@ -1,0 +1,86 @@
+{
+  "name": "02-mock-backend",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-tests",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f59d32c3-dadd-4512-9637-196ea075c641",
+      "name": "Webhook",
+      "webhookId": "dc25f1da-c8f0-46ef-9b1b-9f70e4065beb"
+    },
+    {
+      "parameters": {
+        "jsCode": "const zahtev = $input.first().json.body;\nconst fajl = (zahtev.izmenjeniFajlovi || ['nepoznato.py'])[0];\nconst ime = fajl.replace('.py', '');\n\nreturn [{\n  json: {\n    status: 'ok',\n    generisaniTestovi: [{\n      putanja: `tests/test_${ime}.py`,\n      sadrzaj: `import pytest\\nfrom ${ime} import *\\n\\ndef test_placeholder():\\n    assert True\\n`\n    }],\n    brojPokusaja: 1,\n    poruka: 'Lazni odgovor, pravi backend dolazi u Nedelji 2'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "85f91f31-a7b3-4951-b1cc-a3feb6949c03",
+      "name": "Lazni odgovor"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "e3f4485a-d8f3-4b5f-9bf9-e2f021d815af",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lazni odgovor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lazni odgovor": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "81c7b1b9-5d36-41f0-9e6d-0792d0aafb6b",
+  "meta": {
+  },
+  "nodeGroups": [],
+  "id": "5vJO1dxafykHNvPP",
+  "tags": []
+}

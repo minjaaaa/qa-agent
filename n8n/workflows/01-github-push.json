@@ -1,0 +1,346 @@
+{
+  "name": "01-github-push",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-push",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        48,
+        16
+      ],
+      "id": "5977b16c-8be6-4bb0-b7f8-cbbe4b85139b",
+      "name": "Webhook",
+      "webhookId": "99a94629-dc03-4dbb-aff1-4d47e1842f23"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst item = $input.first();\nconst potpis = (item.json.headers || {})['x-hub-signature-256'];\n\nif (!potpis) {\n  throw new Error('Nedostaje X-Hub-Signature-256 header');\n}\n\nconst secret = $env.GITHUB_WEBHOOK_SECRET;\nif (!secret) {\n  throw new Error('GITHUB_WEBHOOK_SECRET nije stigao do kontejnera');\n}\n\nconst sirovo = item.binary && item.binary.data\n  ? Buffer.from(item.binary.data.data, 'base64')\n  : Buffer.from(JSON.stringify(item.json.body), 'utf8');\n\nconst ocekivano = 'sha256=' + crypto\n  .createHmac('sha256', secret)\n  .update(sirovo)\n  .digest('hex');\n\nconst a = Buffer.from(ocekivano);\nconst b = Buffer.from(potpis);\n\nif (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {\n  throw new Error('Potpis nije validan, zahtev nije od GitHub-a');\n}\n\nreturn [{ json: JSON.parse(sirovo.toString('utf8')) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        16
+      ],
+      "id": "325d0a17-f504-4051-b93d-d74ba4ba0e15",
+      "name": "Provera potpisa"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\n\nconst ref = p.ref || '';\nconst grana = ref.replace('refs/heads/', '');\nconst jeGrana = ref.startsWith('refs/heads/');\n\nconst commits = p.commits || [];\n\nconst fajlovi = new Set();\nfor (const c of commits) {\n  for (const f of [...(c.added || []), ...(c.modified || [])]) {\n    fajlovi.add(f);\n  }\n}\nfor (const c of commits) {\n  for (const f of (c.removed || [])) {\n    fajlovi.delete(f);\n  }\n}\n\nconst svi = [...fajlovi];\nconst python = svi.filter(f => f.endsWith('.py') && !f.startsWith('tests/'));\n\nreturn [{\n  json: {\n    repo: p.repository?.full_name || null,\n    grana,\n    jeGrana,\n    obrisana: p.deleted === true,\n    before: p.before,\n    after: p.after,\n    autor: p.pusher?.name || null,\n    autorTip: p.sender?.type || null,\n    porukaCommita: p.head_commit?.message || '',\n    brojCommita: commits.length,\n    sviFajlovi: svi,\n    pythonFajlovi: python,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        16
+      ],
+      "id": "7ea1c1b1-6c55-4465-9177-b70c2e2c3603",
+      "name": "Izvuci podatke"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5096b2ca-62c7-4a0b-80f3-d1afe28159af",
+              "leftValue": "={{ $json.jeGrana }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "ecf6ec26-4590-4141-99df-d6a58d176911",
+              "leftValue": "={{ $json.obrisana }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "88c7158b-1ab2-4327-8131-b4ab2eafcdcc",
+              "leftValue": "={{ $json.grana.startsWith('qa-agent/') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "ff7a1255-f64d-40b8-9e37-85a6e16abb6b",
+              "leftValue": "={{ $json.pythonFajlovi.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "2e319e2a-41d9-4519-ba5e-974aa6bd49b5",
+              "leftValue": "={{ $json.porukaCommita.includes('[qa-agent skip]') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        16
+      ],
+      "id": "7f033307-85ca-44ff-9e42-94f280fa3b10",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/compare/{{ $json.before }}...{{ $json.after }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3.diff"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        944,
+        -80
+      ],
+      "id": "4f9a2759-c8a0-4f78-9560-5fae792517b9",
+      "name": "Dohvati diff",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "githubApi": {
+          "id": "CiC0WvzMQHMBvgXB",
+          "name": "GitHub qa-agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $('Izvuci podatke').first().json;\nconst ulaz = $input.first().json;\nconst diff = typeof ulaz.data === 'string' ? ulaz.data : String(ulaz);\n\nreturn [{\n  json: {\n    verzija: 1,\n    repo: meta.repo,\n    grana: meta.grana,\n    granaAgenta: 'qa-agent/' + meta.grana,\n    commitSha: meta.after,\n    autor: meta.autor,\n    porukaCommita: meta.porukaCommita,\n    izmenjeniFajlovi: meta.pythonFajlovi,\n    diff: diff,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -80
+      ],
+      "id": "66bc011d-c8d7-436c-95f2-c9465deb303f",
+      "name": "Ugovor"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Ugovor').first().json;\nconst rezultat = $input.first().json;\nconst putanje = rezultat.generisaniTestovi\n  .map(t => t.putanja)\n  .join('\\n');\n\nreturn [{\n  json: {\n    blocks: [\n      {\n        type: 'header',\n        text: { type: 'plain_text', text: 'Testovi generisani' }\n      },\n      {\n        type: 'section',\n        fields: [\n          { type: 'mrkdwn', text: `*Repo:*\\n${d.repo}` },\n          { type: 'mrkdwn', text: `*Grana:*\\n${d.grana}` },\n          { type: 'mrkdwn', text: `*Autor:*\\n${d.autor}` },\n          { type: 'mrkdwn', text: `*Fajlovi:*\\n${d.izmenjeniFajlovi.join(', ')}` }\n        ]\n      },\n            {\n        type: 'section',\n        text: {\n          type: 'mrkdwn',\n          text: `*Generisani testovi:*\\n${putanje}`\n        }\n      },\n      {\n        type: 'context',\n        elements: [\n          { type: 'mrkdwn', text: `Commit: ${d.porukaCommita}` }\n        ]\n      }\n    ]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        -80
+      ],
+      "id": "a3554594-2b52-4861-b0e5-251caf576fcc",
+      "name": "Slack poruka"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#all-qa-agent",
+          "mode": "name"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ JSON.stringify($json.blocks) }}",
+        "text": "={{ 'Testovi generisani za ' + $('Ugovor').first().json.repo }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        1840,
+        -80
+      ],
+      "id": "2eabf3cd-e877-4f62-bf52-3c4c5155ab29",
+      "name": "Slack obavestenje",
+      "webhookId": "9d1777cc-cf6e-4b68-97a0-5068df143044",
+      "credentials": {
+        "slackApi": {
+          "id": "WrB9haugwvADFt2D",
+          "name": "Slack QA agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/generate-tests",
+        "sendBody": true,
+        "specifyBody": "={{ JSON.stringify($json) }}",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1392,
+        -80
+      ],
+      "id": "33306f82-6075-4c42-a8ab-c37d578c09f0",
+      "name": "Pozovi backend",
+      "retryOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Provera potpisa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provera potpisa": {
+      "main": [
+        [
+          {
+            "node": "Izvuci podatke",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Izvuci podatke": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Dohvati diff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dohvati diff": {
+      "main": [
+        [
+          {
+            "node": "Ugovor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ugovor": {
+      "main": [
+        [
+          {
+            "node": "Pozovi backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack poruka": {
+      "main": [
+        [
+          {
+            "node": "Slack obavestenje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pozovi backend": {
+      "main": [
+        [
+          {
+            "node": "Slack poruka",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "HH221uWs122dcn4X",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "3a3a0111-4045-4576-aa2d-6d1a6ef2ac4a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+  },
+  "nodeGroups": [],
+  "id": "PqVVHcEaCs4f0pj8",
+  "tags": []
+}
