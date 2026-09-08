@@ -37,6 +37,37 @@ services:
       - n8n
     networks:
       - qa-net
+
+  qa-backend:
+    build: ./backend
+    container_name: qa-backend
+    restart: unless-stopped
+    environment:
+      LOG_NIVO: INFO
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    networks:
+      - qa-net
+    depends_on:
+      - docker-socket-proxy
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      POST: 1
+      EXEC: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      INFO: 1
+      PING: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - qa-net
 volumes:
   n8n_data:
 
