@@ -5,7 +5,7 @@ from pydantic import field_validator
 class ZahtevZaTestove(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    verzija: int = 1
+    verzija: int = 2
     repo: str
     grana: str
     grana_agenta: str = Field(alias="granaAgenta")
@@ -27,6 +27,13 @@ class GenerisaniTest(BaseModel):
     putanja: str
     sadrzaj: str
 
+class IshodIzvrsavanja(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proslo: bool
+    izlazni_kod: int = Field(alias="izlazniKod")
+    razlog: str = ""
+    izlaz: str = ""
 
 class OdgovorSaTestovima(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -36,4 +43,5 @@ class OdgovorSaTestovima(BaseModel):
         alias="generisaniTestovi", default_factory=list
     )
     broj_pokusaja: int = Field(alias="brojPokusaja", default=0)
+    ishod: IshodIzvrsavanja | None = None
     poruka: str = ""
